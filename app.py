@@ -1,3 +1,4 @@
+import threading
 import streamlit as st
 import tempfile
 import os
@@ -5,6 +6,46 @@ import time
 import subprocess
 # pyrefly: ignore [missing-import]
 import moondream as md
+
+_MODEL_SINGLETON = None
+_MODEL_LOCK = threading.Lock()
+
+
+def configure_hf_runtime() -> None:
+    """Prefer a stable official Hugging Face endpoint unless a mirror is explicitly requested."""
+    hf_home = os.environ.get("HF_HOME") or os.path.join(os.path.expanduser("~"), ".cache", "huggingface")
+    os.environ["HF_HOME"] = hf_home
+    os.environ["HF_HUB_CACHE"] = os.environ.get("HF_HUB_CACHE") or os.path.join(hf_home, "hub")
+    os.environ["TRANSFORMERS_CACHE"] = os.environ.get("TRANSFORMERS_CACHE") or os.path.join(hf_home, "transformers")
+
+    explicit_mirror = os.environ.get("HF_MIRROR") or os.environ.get("HF_ENDPOINT")
+    if explicit_mirror:
+        os.environ["HF_ENDPOINT"] = explicit_mirror
+    else:
+        os.environ.setdefault("HF_ENDPOINT", "https://huggingface.co")
+
+
+configure_hf_runtime()
+
+
+def get_or_create_model():
+    global _MODEL_SINGLETON
+    if _MODEL_SINGLETON is not None:
+        return _MODEL_SINGLETON
+
+    with _MODEL_LOCK:
+        if _MODEL_SINGLETON is None:
+            _MODEL_SINGLETON = md.photon("moondream/parakeet-redux")
+        return _MODEL_SINGLETON
+
+
+def warmup_model():
+    if _MODEL_SINGLETON is not None:
+        return _MODEL_SINGLETON
+
+    t = threading.Thread(target=get_or_create_model, name="parakeet-warmup", daemon=True)
+    t.start()
+    return _MODEL_SINGLETON
 
 st.set_page_config(
     page_title="Parakeet-Redux Local Transcriber",
@@ -32,8 +73,11 @@ def convert_to_wav(input_path: str, output_path: str) -> float:
 
 @st.cache_resource
 def load_speech_model():
-    """Initializes Moondream Photon engine downloading 178MB ternary weights on first run."""
-    return md.photon("moondream/parakeet-redux")
+    """Initialize a single shared process-local model instance for the app."""
+    return get_or_create_model()
+
+
+warmup_model()
 
 st.title("⚡ Local Meeting & Podcast Transcriber")
 st.markdown("Powered by `moondream/parakeet-redux` (1.58-Bit Ternary AI). 113× CPU real-time transcription speed.")

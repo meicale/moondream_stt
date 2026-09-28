@@ -1,0 +1,15 @@
+[project]
+name = "raycodes-parakeet-redux"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "moondream>=2.5.0",
+    "numpy>=2.5.3",
+    "streamlit>=1.64.0",
+]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
